@@ -1,0 +1,128 @@
+title: Relates to pattern EXT-UC-016-001
+description: Http forward proxy, EXT-UC-016-001
+contentType: application/json
+template: |
+    {
+        "class": "AS3",
+        "action": "deploy",
+        "persist": true,
+        "declaration": {
+            "class": "ADC",
+            "schemaVersion": "3.27.0",
+            "remark": "Built with template: {{build_source}}",
+            "target": {
+                "hostname": "{{bigip_name}}"
+            },
+            "{{tenant_name}}": {
+                "class": "Tenant",
+                {{#application_list}}
+                    "{{application_name}}": {
+                        "class": "Application",
+                        "template": "generic",
+                        {{#vserver_list}}
+                        "{{vserver_name}}": {
+                            "class": "Service_HTTP",
+                            "virtualAddresses": [
+                                {{#virtual_addresses}}
+                                {{.}},
+                                {{/virtual_addresses}}
+                            ],
+                            "virtualPort": {{virtual_port::integer}},
+                            "profileTCP": {
+                                "bigip": "{{tcp_profile}}"
+                            },
+                            "profileHTTP": {
+                                "use": "{{chosen_profile_http}}"
+                            },
+                            "allowVlans": [
+                                {{#allow_vlans}}
+                                "bigip": {{.}},
+                                {{/allow_vlans}}
+                            ],
+                            "snat": {
+                                "bigip": "{{snat}}"
+                            },
+                            "policyEndpoint": "{{chosen_policy}}"
+                        },
+                        {{/vserver_list}}
+                        {{#profile_http_list}}
+                        "{{profile_http_name}}": {
+                            "class": "HTTP_Profile",
+                            "proxyType": "{{proxy_type}}",
+                            "requestChunking": "selective",
+                            "responseChunking": "selective",
+                            "resolver": {
+                                "bigip": "{{dns_resolver}}"
+                            },
+                            "routeDomain": 0,
+                            "tunnelName": "http-tunnel"
+                        },
+                        {{/profile_http_list}} 
+                        {{#traffic_policy_list}}
+                        "{{traffic_policy_name}}": {
+                            "class": "Endpoint_Policy",
+                            "strategy": "{{strategy}}",
+                            "remark": "{{remark}}",
+                            "rules": [
+                            {
+                                "name": "{{traffic_rule_name}}",
+                                "remark": "{{traffic_rule_remark}}",
+                                "conditions": [
+                                {
+                                    "event": "request",
+                                    "type": "httpUri",
+                                    "queryString": {
+                                        "operand": "contains",
+                                        "values": [
+                                            {{#uri_values}}
+                                            {{.}},
+                                            {{/uri_values}}
+                                        ]
+                                    }
+                                },
+                                {
+                                    "event": "request",
+                                    "type": "httpHeader",
+                                    "name": "Method",
+                                    "all":{
+                                        "operand": "equals",
+                                        "values": ["CONNECT"]    
+                                    }
+                                },
+                                {
+                                    "event": "request",
+                                    "type": "tcp",
+                                    "address":{
+                                        "operand": "matches",
+                                        "values": [
+                                            {{#ip_values}}
+                                            {{.}},
+                                            {{/ip_values}}
+                                        ] 
+                                    }
+                                }],
+                                "actions": [{
+                                    "type": "tcl",
+                                    "event": "request",
+                                    "setVariable": {
+                                        "expression": "1",
+                                        "name": "placebo_permitted"
+                                    }
+                                }]
+                            },
+                            {
+                                "name": "explicit-deny",
+                                "remark": "Drop All Unmatched Requests",
+                                "actions": [{
+                                    "type": "drop",
+                                    "event": "request"
+                                }]
+                            }
+                        ]
+                    },
+                    {{/traffic_policy_list}}
+                },
+                {{/application_list}}
+            }
+        }
+    }
